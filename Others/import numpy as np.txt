@@ -1,0 +1,176 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import tensorflow as tf
+%matplotlib inline
+import cv2
+import skimage.color as sk
+from tqdm import tqdm_notebook as tqdm
+
+path="/content/drive/MyDrive/Landscapes_snapshots"
+paths= "/content/drive/MyDrive/Landscapes_snapshots/landscapes"
+
+import os
+image_paths=[os.path.join(paths,img) for
+             img in os.listdir(paths) if
+             img.endswith(('.jpg','.png','.jpeg'))]
+
+print(image_paths)
+IMAGE_SIZE=(224, 224)
+BATCH_SIZE=16
+train_gen=tf.keras.preprocessing.image.ImageDataGenerator(rescale = 1/255.0, validation_split= 0.15)
+
+train=train_gen.flow_from_directory(path, target_size = (IMAGE_SIZE[0], IMAGE_SIZE[1]),
+                                      batch_size = BATCH_SIZE, class_mode = None, subset = "training")
+
+val=train_gen.flow_from_directory(path, target_size = (IMAGE_SIZE[0], IMAGE_SIZE[1]),
+                                    batch_size = BATCH_SIZE, class_mode = None, subset = "validation")
+
+def convert_lab(image) :
+  lab_image=sk.rgb2lab(image)
+  return lab_image
+
+def convert_rgb(image) :
+  rgb_image=sk.lab2rgb(image)
+  return rgb_image
+
+def plot_image(image) :
+  plt.figure(figsize = (12, 8))
+  plt.imshow(image, cmap = "gray")
+  plt.grid(False)
+
+x_train=[]
+y_train=[]
+for i in tqdm(range(230)) :
+  for image in train[i] :
+    try :
+      lab_image=convert_lab(image)
+      x_train.append(lab_image[:,:,0])
+      y_train.append(lab_image[:,:,1:] / 128)
+    except :
+      print("Unexpected error. Maybe broken image.")
+x_train=np.array(x_train)
+y_train=np.array(y_train)
+print(x_train.shape)
+print(y_train.shape)
+
+x_val=[]
+y_val=[]
+for i in tqdm(range(40)) :
+  for image in val[i] :
+    try :
+      lab_image = convert_lab(image)
+      x_val.append(lab_image[:,:,0])
+      y_val.append(lab_image[:,:,1:] / 128)
+    except :
+      print("Unexpected error. Maybe broken image.")
+x_val=np.array(x_val)
+y_val=np.array(y_val)
+print(x_val.shape)
+print(y_val.shape)
+
+x_train=x_train.reshape(x_train.shape[0], IMAGE_SIZE[0], IMAGE_SIZE[1], 1)
+x_val=x_val.reshape(x_val.shape[0], IMAGE_SIZE[0], IMAGE_SIZE[1], 1)
+print(x_train.shape)
+print(y_train.shape)
+print(x_val.shape)
+print(y_val.shape)
+
+reduce_lr=tf.keras.callbacks.ReduceLROnPlateau(monitor= "loss", factor=0.5, patience=10,
+                                                 min_lr = 0.000001, verbose=1)
+monitor_es=tf.keras.callbacks.EarlyStopping(monitor= "loss", patience=25, restore_best_weights= False, verbose = True)
+
+# transfer learning
+vgg_model = tf.keras.applications.vgg16.VGG16()
+transfer_learned_encoder_model = tf.keras.models.Sequential()
+for i, layer in enumerate(vgg_model.layers):
+  if i < 19 :
+    transfer_learned_encoder_model.add(layer)
+for layer in transfer_learned_encoder_model.layers:
+  layer.trainable = False
+
+transfer_learned_encoder_model.summary()
+
+vgg_features=[]
+for i, image in tqdm(enumerate(x_train)) :
+  image=cv2.merge((image, image, image))
+  image=image.reshape((1,IMAGE_SIZE[0],IMAGE_SIZE[1],3))
+  prediction=transfer_learned_encoder_model.predict(image)
+  prediction=prediction.reshape((7,7,512))
+  vgg_features.append(prediction)
+vgg_features=np.array(vgg_features)
+print(vgg_features.shape)
+
+# Encoder
+input_shape=(7, 7, 512)
+i=tf.keras.layers.Input(shape = input_shape)
+
+#decoder
+output=tf.keras.layers.Conv2D(filters=128, kernel_size=(3,3), padding="same", activation="relu")(i)
+output=tf.keras.layers.Conv2D(filters=128, kernel_size=(3,3), padding="same", activation="relu")(i)
+output=tf.keras.layers.Conv2D(filters=128, kernel_size=(3,3), padding="same", activation="relu")(i)
+output=tf.keras.layers.UpSampling2D((2,2))(output)
+output=tf.keras.layers.Conv2D(filters=64, kernel_size=(3,3), padding="same", activation="relu")(output)
+output=tf.keras.layers.Conv2D(filters=64, kernel_size=(3,3), padding="same", activation="relu")(output)
+output=tf.keras.layers.Conv2D(filters=64, kernel_size=(3,3), padding="same", activation="relu")(output)
+output=tf.keras.layers.UpSampling2D((2,2))(output)
+output=tf.keras.layers.Conv2D(filters=32, kernel_size=(3,3), padding="same", activation="relu")(output)
+output=tf.keras.layers.Conv2D(filters=32, kernel_size=(3,3), padding="same", activation="relu")(output)
+output=tf.keras.layers.Conv2D(filters=32, kernel_size=(3,3), padding="same", activation="relu")(output)
+output=tf.keras.layers.UpSampling2D((2,2))(output)
+output=tf.keras.layers.Conv2D(filters=16, kernel_size=(3,3), padding="same", activation="relu")(output)
+output=tf.keras.layers.Conv2D(filters=16, kernel_size=(3,3), padding="same", activation="relu")(output)
+output=tf.keras.layers.Conv2D(filters=16, kernel_size=(3,3), padding="same", activation="relu")(output)
+output=tf.keras.layers.UpSampling2D((2,2))(output)
+output=tf.keras.layers.Conv2D(filters=2, kernel_size=(3,3), padding="same", activation="tanh")(output)
+output=tf.keras.layers.UpSampling2D((2,2))(output)
+
+decoder_model=tf.keras.models.Model(inputs=i, outputs=output)
+decoder_model.summary()
+
+decoder_model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+    loss="MSE",
+    metrics=["accuracy"]
+)
+!mkdir -p /content/drive/MyDrive/ColabModels
+transfer_learned_encoder_model.save('/content/drive/MyDrive/ColabModels/encoder_model2.keras')
+
+EPOCHS=140
+with tf.device("/device:GPU:0"):
+  history = decoder_model.fit(vgg_features, y_train, epochs = EPOCHS, verbose = 1,
+                      callbacks = [reduce_lr, monitor_es], batch_size = BATCH_SIZE)
+
+decoder_model.save('/content/drive/MyDrive/ColabModels/decoder_model2.keras')
+
+validation_images = x_val[:15]
+vgg_features_val = []
+for i, image in tqdm(enumerate(validation_images)) :
+  image = cv2.merge((image, image, image))
+  image = image.reshape((1,IMAGE_SIZE[0],IMAGE_SIZE[1],3))
+  prediction = transfer_learned_encoder_model.predict(image)
+  prediction = prediction.reshape((7,7,512))
+  vgg_features_val.append(prediction)
+vgg_features_val = np.array(vgg_features_val)
+print(vgg_features_val.shape)
+
+ab_pred = decoder_model.predict(vgg_features_val)
+ab_pred = ab_pred * 128
+print(ab_pred.shape)
+
+for i in range(validation_images.shape[0]) :
+  image = validation_images[i]
+  image = image.reshape((IMAGE_SIZE[0] , IMAGE_SIZE[1]))
+
+  reconstructed_image =  np.zeros((IMAGE_SIZE[0], IMAGE_SIZE[1], 3))
+  reconstructed_image[:,:,0] =  image
+  reconstructed_image[:,:,1:] = ab_pred[i]
+
+  #reconstructed_image = reconstructed_image.astype(np.uint8)
+  reconstructed_image = convert_rgb(reconstructed_image)
+
+  image = cv2.resize(image, (1024, 1024))
+  reconstructed_image = cv2.resize(reconstructed_image, (1024, 1024))
+
+  plot_image(image)
+  plot_image(reconstructed_image)
