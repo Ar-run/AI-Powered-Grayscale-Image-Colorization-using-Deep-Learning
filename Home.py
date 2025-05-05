@@ -2,7 +2,7 @@ import streamlit as st
 
 st.set_page_config(page_title="Image Colorization using Deep Learning", layout="centered")
 
-# CSS for scrolling background image
+#for scrolling background image
 st.markdown(
     """
     <style>
@@ -40,7 +40,6 @@ Upload your grayscale photos and watch them come to life using our Deep learning
 
 **Use the sidebar or navigation menu to:**
 - Start colorizing your images
-- Learn about the process
 - Meet the team behind this project
 """)
 st.markdown("</div>", unsafe_allow_html=True)

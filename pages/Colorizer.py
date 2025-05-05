@@ -34,19 +34,17 @@ def reset_adjustments():
     st.session_state.temperature = 0
     st.session_state.color_intensity = 1.0
 
-# File uploader
 uploaded_file = st.file_uploader("", type=["jpg", "jpeg", "png"], on_change=reset_adjustments)
 
 # Sidebar sliders with default values
 st.sidebar.header("Image Adjustments")
-color_intensity = st.sidebar.slider("Color Intensity", 0.0, 2.0, 1.0, 0.1, key="color_intensity")
 brightness = st.sidebar.slider("Brightness", 0.5, 2.0, 1.0, 0.1, key="brightness")
 contrast = st.sidebar.slider("Contrast", 0.5, 2.0, 1.0, 0.1, key="contrast")
 sharpness = st.sidebar.slider("Sharpness", 0.5, 3.0, 1.0, 0.1, key="sharpness")
 temperature = st.sidebar.slider("Color Temperature", -50, 50, 0, 1, key="temperature")
+color_intensity = st.sidebar.slider("Color Intensity", 0.0, 2.0, 1.0, 0.1, key="color_intensity")
 
 
-# Load models
 @st.cache_resource
 def load_models():
     try:
@@ -92,7 +90,7 @@ def adjust_temperature(img, shift):
     img[:, :, 2] = np.clip(img[:, :, 2] - shift, 0, 255)
     return img.astype(np.uint8)
 
-# Main app logic
+# Main
 if encoder_model and decoder_model:
     if uploaded_file:
         image = Image.open(uploaded_file)
@@ -116,17 +114,15 @@ if encoder_model and decoder_model:
         enhanced = np.array(enhanced)
         enhanced = adjust_temperature(enhanced, temperature)
 
-        # Side-by-side comparison
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Original Grayscale")
             st.image(grayscale_rgb, use_column_width=True)
         with col2:
-            st.subheader("Colorized + Enhanced")
+            st.subheader("Colorized")
             st.image(enhanced, use_column_width=True)
 
-        # Download button
-        buf = io.BytesIO()
+        buf = io.BytesIO()# Download button
         Image.fromarray(enhanced).save(buf, format='PNG')
         st.download_button("Download Colorized Image", data=buf.getvalue(), file_name="colorized_image.png", mime="image/png")
     else:

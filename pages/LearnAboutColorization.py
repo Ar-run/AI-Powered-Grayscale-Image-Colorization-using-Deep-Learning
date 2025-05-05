@@ -3,6 +3,19 @@ import streamlit as st
 st.set_page_config(page_title="Learn About Colorization", layout="centered")
 st.title("🧠 Learn About the Colorization Model")
 
+st.markdown(
+   
+    
+    """
+    <style>
+    .main {
+        background-color: #f2e0c9;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 with st.expander("About the Colorization Model", expanded=True):
     st.markdown("""
     ### How it works
