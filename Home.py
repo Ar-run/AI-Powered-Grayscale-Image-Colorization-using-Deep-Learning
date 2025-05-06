@@ -40,6 +40,6 @@ Upload your grayscale photos and watch them come to life using our Deep learning
 
 **Use the sidebar or navigation menu to:**
 - Start colorizing your images
-- Meet the team behind this project
+- Learn about the colorization process in brief
 """)
 st.markdown("</div>", unsafe_allow_html=True)
